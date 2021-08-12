@@ -19,19 +19,46 @@
 
 use craft\helpers\App;
 
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
+use NewRelic\Monolog\Enricher\Formatter;
+use NewRelic\Monolog\Enricher\Processor;
+
 return [
-    '*' => [
-        'id' => App::env('APP_ID') ?: 'CraftCMS',
-        'modules' => [
-            'demos' => \modules\demos\Module::class,
-            'spoke' => \modules\Module::class,
-        ],
-        'bootstrap' => ['spoke', 'demos'],
-        'components' => [
-            'mailer' => null,
-        ],
+    'modules' => [
+        'demos' => \modules\demos\Module::class,
+        'spoke' => \modules\Module::class,
     ],
-    'dev' => [
-        'components' => [],
+    'bootstrap' => ['spoke', 'demos'],
+    'components' => [
+        'log' => [
+            'class' => yii\log\Dispatcher::class,
+            'targets' => [
+                function () {
+                    $logger = new \Monolog\Logger('app');
+                    $logger->pushHandler(
+                        (new \Monolog\Handler\StreamHandler('php://stderr', \Monolog\Logger::WARNING))
+                            ->setFormatter(new Formatter())
+                    );
+
+                    if (\Craft::$app->getConfig()->getGeneral()->devMode) {
+                        $logger->pushHandler(
+                            (new \Monolog\Handler\StreamHandler('php://stdout', \Monolog\Logger::INFO))
+                            ->setFormatter(new Formatter())
+                        );
+                    }
+
+                    $logger->pushProcessor(new Processor());
+
+                    return \Craft::createObject([
+                        'class' => \samdark\log\PsrTarget::class,
+                        'except' => ['yii\web\HttpException:40*'],
+                        'logVars' => [],
+                        'logger' => $logger,
+                        'addTimestampToContext' => true,
+                    ]);
+                }
+            ],
+        ]
     ]
 ];
